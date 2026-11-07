@@ -15,6 +15,8 @@ The auto-calibration tool needs photos of its own coded target; the ordinary cro
 
 PR #54 uses SwiftUI and Apple DiscRecording and is not included in this Linux desktop. No physical recording is part of building, installing or opening this app.
 
+For an older X11 graphics driver that stalls before opening a window, launch with `DISCIMAGESTUDIO_SOFTWARE_RENDERING=1 disc-image-studio-gui` to bypass GLX. This does not change generated disc data.
+
 ## Additional artwork and filesystem features
 
 This branch selectively integrates [PR #54](https://github.com/JiaFeiMiao-K-Cat/DiscImageStudio/pull/54) at `e7f4716` (portable DVD diffraction motifs and colour read-back, not the macOS application), [PR #32](https://github.com/JiaFeiMiao-K-Cat/DiscImageStudio/pull/32) at `3c9ad56` (preserve filename extensions), and [PR #96](https://github.com/JiaFeiMiao-K-Cat/DiscImageStudio/pull/96) at `d696276` (sector-granular blank-area DVD file placement). Their shared code is adapted to v1.5.0 physical geometry and usable-sector limits.

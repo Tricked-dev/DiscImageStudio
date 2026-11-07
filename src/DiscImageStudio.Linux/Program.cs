@@ -54,6 +54,11 @@ internal static class Program
             {
                 // Matches StartupWMClass in the .desktop file so docks group the window.
                 WmClass = "DiscImageStudio",
+                // Some older X11/GLX drivers stall during context discovery rather than
+                // failing and reaching Avalonia's fallback. Allow a per-host bypass.
+                RenderingMode = Environment.GetEnvironmentVariable("DISCIMAGESTUDIO_SOFTWARE_RENDERING") == "1"
+                    ? [X11RenderingMode.Software]
+                    : [X11RenderingMode.Glx, X11RenderingMode.Software],
                 UseDBusFilePicker = true,
             })
             .WithInterFont()
