@@ -16,6 +16,7 @@
 - 移除「显示数据可能占用区域」开关，蓝色占用区引导改为默认始终显示。
 - 生成 CD／DVD 数据盘 ISO 时校验卷标长度：超过 Joliet 的 16 个字符会在写入前报错，不再静默截断；导出页的卷标输入限制为 16 个字符并显示提示，蓝光 UDF 卷标不受影响。
 - 新增「允许覆写已写入的 DVD±RW」刻录选项。DVD+RW 在首次格式化后不会再回到 IMAPI 的空白（`BLANK`）状态：擦除只替换盘上内容，`IDiscFormat2Data` 始终报告 `OVERWRITE_ONLY`，旧版本因此会一直以「DVD 不是空白盘」拒绝再次刻录。勾选后刻录请求设置 `IDiscFormat2Data::ForceOverwrite`，由 IMAPI 从 LBA 0 整盘覆写；容量检查改用盘片总扇区数，写入前仍要求盘片处于可覆写状态，一次性 DVD-R／DVD+R 继续只接受空白盘。该选项默认关闭，确认对话框会说明旧内容将被整盘擦除。实盘验证：MATSHITA DVD+-RW UJ8B1（固件 D.03）配 RITEK DVD+RW，2,295,104 扇区，2.4×，事件流 `StartLba=0`、`LastWrittenLba=2,295,103`，写入 1,500,173 ms 后正常关闭会话，盘面图案可见；尚未执行读回比对，也没有其他设备或盘片的数据。
+- 新增铼德 Excellent X DVD+RW 4× 内置预设（MID `RITEK-004-48`）：内半径 23.941751 mm、外半径 58.143818 mm、2,295,104 扇区，三项轨距系数取自 Discussions #191。该盘片已完成一次整盘 DVD+RW 覆写刻录，预设可用于同型号介质。
 
 ### English
 
@@ -31,6 +32,7 @@
 - Removed the "Show data occupancy area" toggle; the blue guide is always visible.
 - Validate volume-label length when generating CD/DVD data ISOs: labels longer than Joliet's 16 characters now fail before writing instead of being silently truncated. The export page limits label input to 16 characters with a hint; Blu-ray UDF labels are unaffected.
 - Added an "allow overwriting a used DVD±RW" burn option. A DVD+RW never returns to IMAPI's `BLANK` state after its first format: erasing only replaces the disc contents, `IDiscFormat2Data` keeps reporting `OVERWRITE_ONLY`, and previous versions therefore always refused the disc with "DVD is not blank". With the option enabled the burn request sets `IDiscFormat2Data::ForceOverwrite` so IMAPI rewrites the disc from LBA 0, the capacity check uses the disc's total sector count, and the write still requires an overwritable media state; write-once DVD-R/DVD+R remain blank-only. The option is off by default and the confirmation dialog states that the previous contents are erased. Physical validation: MATSHITA DVD+-RW UJ8B1 (firmware D.03) with a RITEK DVD+RW, 2,295,104 sectors at 2.4×; the event stream reported `StartLba=0` and `LastWrittenLba=2,295,103`, the write returned after 1,500,173 ms and the session closed normally, with a visible drawing on the disc. Read-back comparison and data for other drives or media are still pending.
+- Added a built-in preset for the RiTEK Excellent X DVD+RW 4× (MID `RITEK-004-48`): inner radius 23.941751 mm, outer radius 58.143818 mm, 2,295,104 sectors, with the three track-pitch coefficients contributed in Discussions #191. The same disc completed one full-disc DVD+RW overwrite burn.
 
 ## [1.5.0] - 2026-11-07
 
