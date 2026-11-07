@@ -18,11 +18,11 @@ public static class CalibrationGenerator
             OpticalDiscFamily.Dvd => new CalibrationParameters(CalibrationDiscKind.Dvd, settings.InnerRadiusMm, settings.OuterRadiusMm,
                 settings.Sectors, DvdStreamingOptions.StandardChannelBitLengthNm,
                 settings.PitchLinear, settings.PitchQuadratic, settings.PitchCubic,
-                DvdReadCompatibility: settings.DvdReadCompatibility),
+                DvdReadCompatibility: settings.DvdReadCompatibility, UsableSectors: settings.OutputSectors),
             OpticalDiscFamily.BluRay => BluRayParameters(settings),
             _ => new CalibrationParameters(CalibrationDiscKind.Cd, settings.InnerRadiusMm, settings.OuterRadiusMm,
                 settings.Sectors, CdDiscParameters.StandardLinearVelocityMmPerSecond,
-                settings.PitchLinear, settings.PitchQuadratic, settings.PitchCubic),
+                settings.PitchLinear, settings.PitchQuadratic, settings.PitchCubic, UsableSectors: settings.UsableSectors),
         };
         Validate(parameters);
         return CalibrationTarget.Create(parameters);
@@ -89,7 +89,7 @@ public static class CalibrationGenerator
                 {
                     BluRayDiscParameters disc = BluRayDisc(target.Parameters);
                     using FileStream output = new(staged, FileMode.CreateNew, FileAccess.Write, FileShare.None);
-                    BluRayStreamingGenerator.GenerateToStream(output, new BluRayStreamingOptions(disc, 0, disc.TotalSectors),
+                    BluRayStreamingGenerator.GenerateToStream(output, new BluRayStreamingOptions(disc, 0, disc.OutputSectors),
                         BluRayPatternMapping(target), new InlineProgress<BluRayStreamingProgress>(value => progress(value.Fraction)),
                         cancellationToken);
                     break;
@@ -124,11 +124,11 @@ public static class CalibrationGenerator
     }
 
     public static CdDiscParameters CdParameters(CalibrationParameters p)
-        => new(p.InnerRadiusMm, p.OuterRadiusMm, p.Sectors, p.LinearDensity, 0, p.OuterRadiusMm, p.PitchLinear, p.PitchQuadratic, p.PitchCubic);
+        => new(p.InnerRadiusMm, p.OuterRadiusMm, p.Sectors, p.LinearDensity, 0, p.OuterRadiusMm, p.PitchLinear, p.PitchQuadratic, p.PitchCubic, UsableSectors: p.UsableSectors);
 
     public static DvdStreamingOptions DvdOptions(CalibrationParameters p)
         => new(checked((uint)p.Sectors), p.InnerRadiusMm, p.OuterRadiusMm, p.LinearDensity, 0,
-            PitchLinear: p.PitchLinear, PitchQuadratic: p.PitchQuadratic, PitchCubic: p.PitchCubic, ReadCompatibility: p.DvdReadCompatibility);
+            PitchLinear: p.PitchLinear, PitchQuadratic: p.PitchQuadratic, PitchCubic: p.PitchCubic, ReadCompatibility: p.DvdReadCompatibility, UsableSectors: p.UsableSectors is { } usable ? checked((uint)usable) : null);
 
     public static BluRayDiscParameters BluRayDisc(CalibrationParameters p)
     {
@@ -137,7 +137,9 @@ public static class CalibrationGenerator
             throw new ArgumentException("The calibration parameters do not describe a Blu-ray target.");
         }
 
-        BluRayDiscParameters disc = new(checked((uint)p.Sectors), 1, p.InnerRadiusMm, p.OuterRadiusMm);
+        BluRayDiscParameters disc = new(checked((uint)p.Sectors), 1, p.InnerRadiusMm, p.OuterRadiusMm,
+            PitchLinear: p.PitchLinear, PitchQuadratic: p.PitchQuadratic, PitchCubic: p.PitchCubic,
+            UsableSectors: p.UsableSectors is { } usable ? checked((uint)usable) : null);
         disc.Validate();
         return disc;
     }
@@ -148,7 +150,7 @@ public static class CalibrationGenerator
         BluRayDiscParameters disc = BluRayDisc(target.Parameters);
         uint start = checked((uint)target.Parameters.DrawingStartSector);
         uint end = target.Parameters.DrawingEndSectorExclusive == 0
-            ? disc.TotalSectors
+            ? disc.OutputSectors
             : checked((uint)target.Parameters.DrawingEndSectorExclusive);
         return new BluRayPatternRangeMapping(disc, target.Sample, start, end, target.Parameters.BluRayInvertMapping,
             allowParallelSampling: true);
@@ -161,11 +163,12 @@ public static class CalibrationGenerator
             throw new ArgumentOutOfRangeException(nameof(settings), "The total sector count exceeds the Blu-ray engine's range.");
         }
 
-        BluRayDiscParameters disc = new((uint)settings.Sectors, 1, settings.InnerRadiusMm, settings.OuterRadiusMm);
+        BluRayDiscParameters disc = settings.ToBluRay();
         disc.Validate();
         return new CalibrationParameters(CalibrationDiscKind.BluRay, disc.InnerRadiusMm, disc.OuterRadiusMm, disc.TotalSectors,
             BluRayDiscParameters.ChannelBitLengthNm, BluRayInvertMapping: settings.InvertMapping,
-            DrawingStartSector: 0, DrawingEndSectorExclusive: disc.TotalSectors);
+            DrawingStartSector: 0, DrawingEndSectorExclusive: disc.OutputSectors, UsableSectors: settings.UsableSectors,
+            PitchLinear: settings.PitchLinear, PitchQuadratic: settings.PitchQuadratic, PitchCubic: settings.PitchCubic);
     }
 
     private sealed class InlineProgress<T>(Action<T> report) : IProgress<T>

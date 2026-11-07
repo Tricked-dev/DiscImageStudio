@@ -66,6 +66,8 @@
       </StackPanel>
     </Grid>
     <TextBlock Classes="caption" Text="{Binding SectorsHint}" Margin="0,-8,0,0" />
+    <TextBlock Text="Usable sectors (optional)" />
+    <TextBox Text="{Binding UsableSectorsText}" PlaceholderText="Blank uses the full aligned capacity" />
 
     <Expander Header="Calibrated track pitch (DVD)" IsVisible="{Binding IsDvd}" HorizontalAlignment="Stretch">
       <StackPanel Spacing="8">

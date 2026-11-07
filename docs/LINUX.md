@@ -1,7 +1,7 @@
 # Local Linux integration
 
-This checkout brings in the Linux Avalonia desktop from [PR #66](https://github.com/JiaFeiMiao-K-Cat/DiscImageStudio/pull/66), pinned at `8531d27`, on upstream `c720fd4`.
-Its interface remains the selected desktop. Adaptations informed by [PR #48](https://github.com/JiaFeiMiao-K-Cat/DiscImageStudio/pull/48) preserve calibrated CD/BD pitch, DVD read-compatibility settings, exported-artifact geometry/interleave and per-process cache ownership. Shift-wheel scrolls the calibration page.
+This checkout brings in the Linux Avalonia desktop from [PR #66](https://github.com/JiaFeiMiao-K-Cat/DiscImageStudio/pull/66), pinned at `8531d27`, on upstream `29b8cc1` (v1.5.0).
+Its interface remains the selected desktop. Adaptations informed by [PR #48](https://github.com/JiaFeiMiao-K-Cat/DiscImageStudio/pull/48) preserve calibrated CD/BD pitch, DVD read-compatibility settings, exported-artifact geometry/interleave and per-process cache ownership. Shift-wheel scrolls the calibration page. The 1.5.0 integration also preserves usable-sector limits in presets, projects, export and calibration; project settings expose the optional usable capacity separately from physical geometry.
 
 [PR #62](https://github.com/JiaFeiMiao-K-Cat/DiscImageStudio/pull/62), pinned at `b305f2c`, adds the independent Python photo auto-calibration tool and `dvd-calib-pattern` / `dvd-calib-solve` CLI bridges. It is not integrated into the manual-calibration page. Install from this checkout, since these PRs are not merged upstream:
 

@@ -16,7 +16,8 @@ public sealed record DiscPreset(
     double PitchQuadratic = 0,
     double PitchCubic = 0,
     bool InvertMapping = false,
-    bool IsBuiltIn = true)
+    bool IsBuiltIn = true,
+    long? UsableSectors = null)
 {
     public string FamilyLabel => DiscFamilies.Label(Family);
 
@@ -99,15 +100,15 @@ public static class PresetCatalog
         List<DiscPreset> presets = [];
         presets.AddRange(merged.CdPresets.Select(p => new DiscPreset(
             p.Id, OpticalDiscFamily.CompactDisc, Translator.T(p.DisplayName), Translator.T(p.Description),
-            p.Sectors, p.InnerRadiusMm, p.OuterRadiusMm, IsBuiltIn: builtInIds.Contains(p.Id))));
+            p.Sectors, p.InnerRadiusMm, p.OuterRadiusMm, p.PitchLinear, p.PitchQuadratic, p.PitchCubic, IsBuiltIn: builtInIds.Contains(p.Id), UsableSectors: p.UsableSectors)));
         presets.AddRange(merged.DvdPresets.Select(p => new DiscPreset(
             p.Id, OpticalDiscFamily.Dvd, Translator.T(p.DisplayName), Translator.T(p.Description),
             p.TotalSectors, p.InnerRadiusMm, p.OuterRadiusMm, p.PitchLinear, p.PitchQuadratic, p.PitchCubic,
-            IsBuiltIn: builtInIds.Contains(p.Id))));
+            IsBuiltIn: builtInIds.Contains(p.Id), UsableSectors: p.UsableSectors)));
         presets.AddRange((merged.BluRayPresets ?? []).Select(p => new DiscPreset(
             p.Id, OpticalDiscFamily.BluRay, Translator.T(p.DisplayName), Translator.T(p.Description),
-            p.TotalSectors, p.InnerRadiusMm, p.OuterRadiusMm, InvertMapping: p.InvertMapping,
-            IsBuiltIn: builtInIds.Contains(p.Id))));
+            p.TotalSectors, p.InnerRadiusMm, p.OuterRadiusMm, p.PitchLinear, p.PitchQuadratic, p.PitchCubic, InvertMapping: p.InvertMapping,
+            IsBuiltIn: builtInIds.Contains(p.Id), UsableSectors: p.UsableSectors)));
         return presets;
     }
 }

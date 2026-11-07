@@ -58,8 +58,8 @@ public partial class ExportViewModel : ObservableObject
             }
 
             long bytes = _project.IsCd && !_project.HasFiles
-                ? (_project.Sectors * 2352) + 44
-                : _project.Sectors * 2048;
+                ? (_project.Snapshot().OutputSectors * 2352) + 44
+                : _project.Snapshot().OutputSectors * 2048;
             return Num.Bytes(bytes);
         }
     }
@@ -133,7 +133,7 @@ public partial class ExportViewModel : ObservableObject
             }
 
             long free = new DriveInfo(directory).AvailableFreeSpace;
-            long needed = _project.IsCd && !_project.HasFiles ? _project.Sectors * 2352 : _project.Sectors * 2048;
+            long needed = _project.IsCd && !_project.HasFiles ? _project.Sectors * 2352 : _project.Snapshot().OutputSectors * 2048;
             SpaceInfo = $"{Num.Bytes(free)} free on the destination";
             SpaceWarning = free < needed;
         }

@@ -22,8 +22,11 @@ public sealed record DiscSettings(
     bool FilesAtOuterRing,
     bool Interleave,
     bool WriteCue,
-    bool DvdReadCompatibility = false)
+    bool DvdReadCompatibility = false,
+    long? UsableSectors = null)
 {
+    public long OutputSectors => UsableSectors ?? (Family == OpticalDiscFamily.Dvd ? Sectors / 16 * 16 : Sectors);
+
     public bool HasFiles => !string.IsNullOrWhiteSpace(DataDirectory);
 
     /// <summary>CD composes against the scheme's fixed image radius; DVD and BD against the
@@ -49,7 +52,7 @@ public sealed record DiscSettings(
     public CdDiscParameters ToCd(double? innerOverride = null, double? outerOverride = null)
     {
         CdDiscParameters parameters = new(innerOverride ?? InnerRadiusMm, outerOverride ?? OuterRadiusMm, Sectors,
-            PitchLinear: PitchLinear, PitchQuadratic: PitchQuadratic, PitchCubic: PitchCubic);
+            PitchLinear: PitchLinear, PitchQuadratic: PitchQuadratic, PitchCubic: PitchCubic, UsableSectors: UsableSectors);
         parameters.Validate();
         return parameters;
     }
@@ -64,7 +67,7 @@ public sealed record DiscSettings(
         DvdStreamingOptions options = new(
             (uint)Sectors, InnerRadiusMm, OuterRadiusMm,
             PitchLinear: PitchLinear, PitchQuadratic: PitchQuadratic, PitchCubic: PitchCubic,
-            Tone: EffectiveTone, ReadCompatibility: DvdReadCompatibility);
+            Tone: EffectiveTone, ReadCompatibility: DvdReadCompatibility, UsableSectors: checked((uint)OutputSectors));
         options.Validate();
         return options;
     }
@@ -77,7 +80,7 @@ public sealed record DiscSettings(
         }
 
         BluRayDiscParameters parameters = new((uint)Sectors, 1, innerOverride ?? InnerRadiusMm, outerOverride ?? OuterRadiusMm,
-            PitchLinear: PitchLinear, PitchQuadratic: PitchQuadratic, PitchCubic: PitchCubic);
+            PitchLinear: PitchLinear, PitchQuadratic: PitchQuadratic, PitchCubic: PitchCubic, UsableSectors: UsableSectors is { } usable ? checked((uint)usable) : null);
         parameters.Validate();
         return parameters;
     }
@@ -120,7 +123,7 @@ public sealed record DiscSettings(
                 }
                 else
                 {
-                    arguments.AddRange(["--fill-sectors", Num.Format(Sectors)]);
+                    arguments.AddRange(["--fill-sectors", Num.Format(OutputSectors)]);
                 }
 
                 break;
@@ -183,6 +186,7 @@ public sealed record DiscSettings(
             arguments.AddRange(["--pitch-linear", Num.Format(PitchLinear), "--pitch-quadratic", Num.Format(PitchQuadratic), "--pitch-cubic", Num.Format(PitchCubic)]);
         if (Family == OpticalDiscFamily.Dvd)
             arguments.AddRange(["--read-compatibility", Num.Bool(DvdReadCompatibility)]);
+        arguments.AddRange(["--usable-sectors", Num.Format(OutputSectors)]);
         return arguments.ToArray();
     }
 }

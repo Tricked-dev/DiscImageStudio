@@ -29,6 +29,7 @@ public partial class ProjectViewModel : ObservableObject
     [ObservableProperty] private double _innerRadiusMm;
     [ObservableProperty] private double _outerRadiusMm;
     [ObservableProperty] private long _sectors;
+    [ObservableProperty] private long? _usableSectors;
     [ObservableProperty] private double _pitchLinear;
     [ObservableProperty] private double _pitchQuadratic;
     [ObservableProperty] private double _pitchCubic;
@@ -58,6 +59,7 @@ public partial class ProjectViewModel : ObservableObject
         _innerRadiusMm = document.Geometry.InnerRadiusMm;
         _outerRadiusMm = document.Geometry.OuterRadiusMm;
         _sectors = document.Geometry.Sectors;
+        _usableSectors = document.Geometry.UsableSectors;
         _pitchLinear = document.Geometry.PitchLinear;
         _pitchQuadratic = document.Geometry.PitchQuadratic;
         _pitchCubic = document.Geometry.PitchCubic;
@@ -170,7 +172,7 @@ public partial class ProjectViewModel : ObservableObject
     public DiscSettings Snapshot()
         => new(Family, InnerRadiusMm, OuterRadiusMm, Sectors, PitchLinear, PitchQuadratic, PitchCubic,
             Tone, InvertMapping, DataDirectory ?? string.Empty, VolumeLabel ?? string.Empty,
-            FilesAtOuterRing, Interleave, WriteCue, DvdReadCompatibility);
+            FilesAtOuterRing, Interleave, WriteCue, DvdReadCompatibility, UsableSectors);
 
     public void LoadImages()
     {
@@ -218,15 +220,16 @@ public partial class ProjectViewModel : ObservableObject
     }
 
     /// <summary>Applies edited project settings; base sizes follow the new content ring.</summary>
-    public void ApplyGeometry(string name, double inner, double outer, long sectors, double linear, double quadratic, double cubic, bool invertMapping)
+    public void ApplyGeometry(string name, double inner, double outer, long sectors, double linear, double quadratic, double cubic, bool invertMapping, long? usableSectors = null)
     {
+        UsableSectors = usableSectors;
         Name = name;
         InnerRadiusMm = inner;
         OuterRadiusMm = outer;
         Sectors = sectors;
-        PitchLinear = IsDvd ? linear : 0;
-        PitchQuadratic = IsDvd ? quadratic : 0;
-        PitchCubic = IsDvd ? cubic : 0;
+        PitchLinear = linear;
+        PitchQuadratic = quadratic;
+        PitchCubic = cubic;
         if (IsBluRay)
         {
             InvertMapping = invertMapping;
@@ -275,7 +278,7 @@ public partial class ProjectViewModel : ObservableObject
             ProjectJsonStore.CurrentSchemaVersion,
             string.IsNullOrWhiteSpace(Name) ? "Untitled" : Name.Trim(),
             DiscFamilies.ProjectKey(Family),
-            new ProjectGeometry(InnerRadiusMm, OuterRadiusMm, Sectors, PitchLinear, PitchQuadratic, PitchCubic),
+            new ProjectGeometry(InnerRadiusMm, OuterRadiusMm, Sectors, PitchLinear, PitchQuadratic, PitchCubic, UsableSectors),
             Layers.Select(layer => layer.ToDocument()).ToList(),
             outputs,
             _origin.CalibrationSessionPath,
@@ -456,6 +459,7 @@ public partial class ProjectViewModel : ObservableObject
                 break;
             case nameof(InnerRadiusMm):
             case nameof(OuterRadiusMm):
+            case nameof(UsableSectors):
             case nameof(Sectors):
             case nameof(PitchLinear):
             case nameof(PitchQuadratic):
@@ -520,7 +524,7 @@ public partial class ProjectViewModel : ObservableObject
     /// <summary>A fresh project document for the new-project dialog.</summary>
     public static ProjectDocument CreateDocument(
         string name, OpticalDiscFamily family, double inner, double outer, long sectors,
-        double linear, double quadratic, double cubic, bool invertMapping, string outputPath)
+        double linear, double quadratic, double cubic, bool invertMapping, string outputPath, long? usableSectors = null)
     {
         DateTimeOffset now = DateTimeOffset.UtcNow;
         bool isCd = family == OpticalDiscFamily.CompactDisc;
@@ -529,9 +533,7 @@ public partial class ProjectViewModel : ObservableObject
             name,
             DiscFamilies.ProjectKey(family),
             new ProjectGeometry(inner, outer, sectors,
-                family == OpticalDiscFamily.Dvd ? linear : 0,
-                family == OpticalDiscFamily.Dvd ? quadratic : 0,
-                family == OpticalDiscFamily.Dvd ? cubic : 0),
+                linear, quadratic, cubic, usableSectors),
             [],
             new ProjectOutputs(outputPath, WriteCue: isCd, DataDirectory: string.Empty, VolumeLabel: string.Empty, Interleave: isCd),
             CalibrationSessionPath: null,

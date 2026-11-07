@@ -45,7 +45,7 @@ public static class PreviewRenderer
             {
                 DvdStreamingOptions dvd = settings.ToDvd();
                 CalibrationPreviewOptions options = new(
-                    dvd.TotalSectors, 0, dvd.TotalSectors,
+                    dvd.TotalSectors, 0, dvd.OutputSectors,
                     dvd.InnerRadiusMm, dvd.OuterRadiusMm, actualInner, actualOuter,
                     dvd.ChannelBitLengthNm, Clockwise: true,
                     dvd.LuminanceThreshold, dvd.AlphaThreshold, size, samplesPerSector,
@@ -144,7 +144,7 @@ public static class PreviewRenderer
                     BluRayDiscParameters disc = metadata is null
                         ? settings.ToBluRay()
                         : new BluRayDiscParameters(metadata.TotalSectors, 1, metadata.InnerRadiusMm, metadata.OuterRadiusMm,
-                            PitchLinear: metadata.PitchLinear, PitchQuadratic: metadata.PitchQuadratic, PitchCubic: metadata.PitchCubic);
+                            PitchLinear: metadata.PitchLinear, PitchQuadratic: metadata.PitchQuadratic, PitchCubic: metadata.PitchCubic, UsableSectors: metadata.UsableSectors);
                     uint start = metadata?.DrawingStartSector ?? 0;
                     uint end = metadata?.DrawingEndSectorExclusive ?? disc.TotalSectors;
                     BluRayPreview.RenderReadback(generatedFile, outputPath, disc, size, start, end, cancellationToken);
@@ -252,7 +252,7 @@ public static class PreviewRenderer
     {
         if (!settings.HasFiles)
         {
-            return (0, generated.TotalSectors);
+            return (0, generated.OutputSectors);
         }
 
         BluRayIsoPlan plan = BluRayIsoGenerator.PrepareDrawing(generated, settings.DataDirectory.Trim(),

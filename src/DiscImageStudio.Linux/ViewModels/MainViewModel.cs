@@ -257,7 +257,7 @@ public partial class MainViewModel : ObservableObject
             string output = Path.Combine(result.Folder, ProjectSetupViewModel.SafeFileName(result.Name) + extension);
             ProjectDocument document = ProjectViewModel.CreateDocument(result.Name.Trim(), result.Family,
                 result.InnerRadiusMm, result.OuterRadiusMm, result.Sectors,
-                result.PitchLinear, result.PitchQuadratic, result.PitchCubic, result.InvertMapping, output);
+                result.PitchLinear, result.PitchQuadratic, result.PitchCubic, result.InvertMapping, output, result.UsableSectors);
             ProjectJsonStore.Save(path, document);
             Settings.ProjectsDirectory = result.Folder;
             await OpenProjectFileAsync(path, skipConfirm: true);
@@ -406,7 +406,7 @@ public partial class MainViewModel : ObservableObject
         if (await Ui.ShowProjectSetupAsync(setup) is { Accepted: true } result)
         {
             Project.ApplyGeometry(result.Name.Trim(), result.InnerRadiusMm, result.OuterRadiusMm, result.Sectors,
-                result.PitchLinear, result.PitchQuadratic, result.PitchCubic, result.InvertMapping);
+                result.PitchLinear, result.PitchQuadratic, result.PitchCubic, result.InvertMapping, result.UsableSectors);
         }
     }
 

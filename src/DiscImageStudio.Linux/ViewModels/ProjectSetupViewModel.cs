@@ -19,6 +19,7 @@ public partial class ProjectSetupViewModel : ObservableObject
     [ObservableProperty] private string _innerText = string.Empty;
     [ObservableProperty] private string _outerText = string.Empty;
     [ObservableProperty] private string _sectorsText = string.Empty;
+    [ObservableProperty] private string _usableSectorsText = string.Empty;
     [ObservableProperty] private string _pitchLinearText = "0";
     [ObservableProperty] private string _pitchQuadraticText = "0";
     [ObservableProperty] private string _pitchCubicText = "0";
@@ -65,7 +66,7 @@ public partial class ProjectSetupViewModel : ObservableObject
 
     public string SectorsHint => Family switch
     {
-        OpticalDiscFamily.Dvd => "Multiple of 16 (one ECC block).",
+        OpticalDiscFamily.Dvd => "Geometry capacity; output is limited to complete 16-sector ECC blocks.",
         OpticalDiscFamily.BluRay => $"Multiple of 32, at most {ProjectDocument.BluRaySectorsPerLayer:N0} (single layer).",
         _ => "75 sectors per second of audio; 359,849 is a full 80-minute disc.",
     };
@@ -86,6 +87,7 @@ public partial class ProjectSetupViewModel : ObservableObject
     public double OuterRadiusMm { get; private set; }
 
     public long Sectors { get; private set; }
+    public long? UsableSectors { get; private set; }
 
     public double PitchLinear { get; private set; }
 
@@ -106,6 +108,7 @@ public partial class ProjectSetupViewModel : ObservableObject
         setup.InnerText = Num.Format(project.InnerRadiusMm);
         setup.OuterText = Num.Format(project.OuterRadiusMm);
         setup.SectorsText = Num.Format(project.Sectors);
+        setup.UsableSectorsText = project.UsableSectors is { } usable ? Num.Format(usable) : string.Empty;
         setup.PitchLinearText = Num.Format(project.PitchLinear);
         setup.PitchQuadraticText = Num.Format(project.PitchQuadratic);
         setup.PitchCubicText = Num.Format(project.PitchCubic);
@@ -147,6 +150,7 @@ public partial class ProjectSetupViewModel : ObservableObject
         InnerText = Num.Format(value.InnerRadiusMm);
         OuterText = Num.Format(value.OuterRadiusMm);
         SectorsText = Num.Format(value.Sectors);
+        UsableSectorsText = value.UsableSectors is { } usable ? Num.Format(usable) : string.Empty;
         PitchLinearText = Num.Format(value.PitchLinear);
         PitchQuadraticText = Num.Format(value.PitchQuadratic);
         PitchCubicText = Num.Format(value.PitchCubic);
@@ -164,6 +168,7 @@ public partial class ProjectSetupViewModel : ObservableObject
     partial void OnOuterTextChanged(string value) => GeometryEdited();
 
     partial void OnSectorsTextChanged(string value) => GeometryEdited();
+    partial void OnUsableSectorsTextChanged(string value) => GeometryEdited();
 
     partial void OnPitchLinearTextChanged(string value) => GeometryEdited();
 
@@ -189,6 +194,8 @@ public partial class ProjectSetupViewModel : ObservableObject
     [RelayCommand]
     private void Confirm()
     {
+        Accepted = false;
+        ErrorMessage = null;
         try
         {
             Validate();
@@ -243,9 +250,13 @@ public partial class ProjectSetupViewModel : ObservableObject
         }
 
         Sectors = sectors;
-        if (Family == OpticalDiscFamily.Dvd && sectors % 16 != 0)
+        UsableSectors = null;
+        if (!string.IsNullOrWhiteSpace(UsableSectorsText))
         {
-            throw new ArgumentException("DVD total sectors must be a multiple of 16.");
+            int alignment = Family == OpticalDiscFamily.Dvd ? 16 : Family == OpticalDiscFamily.BluRay ? 32 : 1;
+            if (!Num.TryParse(UsableSectorsText, out long usable) || usable <= 0 || usable > sectors || usable % alignment != 0)
+                throw new ArgumentException($"Usable sectors must be positive, within total sectors, and a multiple of {alignment}.");
+            UsableSectors = usable;
         }
 
         if (Family == OpticalDiscFamily.BluRay)
@@ -262,7 +273,6 @@ public partial class ProjectSetupViewModel : ObservableObject
         }
 
         PitchLinear = PitchQuadratic = PitchCubic = 0;
-        if (Family == OpticalDiscFamily.Dvd)
         {
             PitchLinear = ParseAny(PitchLinearText, "Linear pitch coefficient");
             PitchQuadratic = ParseAny(PitchQuadraticText, "Quadratic pitch coefficient");
@@ -300,6 +310,8 @@ public partial class ProjectSetupViewModel : ObservableObject
         => Num.TryParse(InnerText, out double inner) && inner == preset.InnerRadiusMm
            && Num.TryParse(OuterText, out double outer) && outer == preset.OuterRadiusMm
            && Num.TryParse(SectorsText, out long sectors) && sectors == preset.Sectors
+           && (string.IsNullOrWhiteSpace(UsableSectorsText) ? preset.UsableSectors is null
+               : Num.TryParse(UsableSectorsText, out long usable) && usable == preset.UsableSectors)
            && (Family != OpticalDiscFamily.Dvd
                || (Num.TryParse(PitchLinearText, out double linear) && linear == preset.PitchLinear
                    && Num.TryParse(PitchQuadraticText, out double quadratic) && quadratic == preset.PitchQuadratic

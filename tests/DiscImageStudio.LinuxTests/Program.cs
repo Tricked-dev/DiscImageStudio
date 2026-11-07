@@ -52,6 +52,7 @@ internal static partial class Program
             await RunAsync("BD-R hybrid image generation", () => GenerateBluRay(work, image, files));
             Run("projection previews for every family", () => Projections(work, image, files));
             await RunAsync("artifact readback keeps exported geometry after project edits", () => ArtifactGeometry(work, image));
+            await RunAsync("usable capacity limits exported artifacts", () => UsableCapacity(work, image));
             Run("project round trip keeps every field", () => ProjectRoundTrip(work, image));
             Run("legacy project without tone opens with the hard threshold", () => LegacyToneProject(work));
             Run("project setup validates geometry", SetupValidation);
@@ -239,6 +240,19 @@ internal static partial class Program
 
 
     // Adapted from PR48's artifact-sidecar regression: editing the project must not reinterpret an exported track.
+    private static async Task UsableCapacity(string work, string image)
+    {
+        foreach (var family in new[] { OpticalDiscFamily.CompactDisc, OpticalDiscFamily.Dvd, OpticalDiscFamily.BluRay })
+        {
+            var settings = Settings(family, family == OpticalDiscFamily.Dvd ? 321 : 320, 24, 58) with { UsableSectors = 160 };
+            string path = Path.Combine(work, "usable-" + family + (family == OpticalDiscFamily.CompactDisc ? ".wav" : ".iso"));
+            await Generate(settings, image, path);
+            Equal(family == OpticalDiscFamily.CompactDisc ? 44 + 160L * 2352 : 160L * 2048, new FileInfo(path).Length, "usable output length");
+            var target = DiscImageStudio.Linux.Services.Calibration.CalibrationGenerator.CreateTarget(settings);
+            Equal(160L, target.Parameters.OutputSectors, "calibration uses same output capacity");
+        }
+    }
+
     private static async Task ArtifactGeometry(string work, string image)
     {
         var settings = Settings(OpticalDiscFamily.CompactDisc, 160, 24.5, 56.8) with
@@ -352,6 +366,7 @@ internal static partial class Program
         project.DataDirectory = work;
         project.FilesAtOuterRing = true;
         project.VolumeLabel = "MY_DISC";
+        project.UsableSectors = 2297872;
         project.DvdReadCompatibility = true;
         Assert(project.IsDirty, "edits mark the project dirty");
 
@@ -361,6 +376,7 @@ internal static partial class Program
         ProjectDocument loaded = ProjectJsonStore.Load(path);
         Equal("dvd", loaded.DiscFamily, "family");
         Equal(2297888L, loaded.Geometry.Sectors, "sectors");
+        Assert(loaded.Geometry.UsableSectors == 2297872, "usable capacity survives project round trip");
         Equal(-3.9e-05, loaded.Geometry.PitchLinear, "pitch");
         Equal(1, loaded.Layers.Count, "layers");
         Equal(1.5, loaded.Layers[0].TranslateXMm, "x");
@@ -404,7 +420,11 @@ internal static partial class Program
         setup.SectorsText = "2295105";
         Equal("custom", setup.SelectedPreset!.Id, "manual edit switches to custom");
         setup.ConfirmCommand.Execute(null);
-        Assert(!setup.Accepted && setup.ErrorMessage is not null, "DVD sectors must be a multiple of 16");
+        Assert(setup.Accepted, "DVD geometry may be unaligned; output uses complete ECC blocks");
+        setup.UsableSectorsText = "2295105";
+        setup.ConfirmCommand.Execute(null);
+        Assert(!setup.Accepted, "explicit usable DVD capacity must be aligned");
+        setup.UsableSectorsText = string.Empty;
 
         setup.Family = OpticalDiscFamily.BluRay;
         setup.SectorsText = "12219424";
