@@ -97,6 +97,12 @@ publish_args=(
   -p:PublishReadyToRun="$ready_to_run"
   -p:DebugType=embedded
 )
+# Nixpkgs patches its bundled runtime/apphost to use /nix/store and its build
+# glibc. Download the official packs for a bundle intended for other distributions.
+if [[ -f /etc/NIXOS ]]; then
+  mkdir -p "$output/.dotnet-packs"
+  publish_args+=("-p:NetCoreTargetingPackRoot=$(cd "$output/.dotnet-packs" && pwd)" -p:AllowMissingPrunePackageData=true)
+fi
 dotnet "${publish_args[@]}"
 chmod 755 "$stage/app/disc-image-studio-gui"
 
