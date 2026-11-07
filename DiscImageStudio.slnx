@@ -14,4 +14,6 @@
   <Project Path="tools/FourLevelDither/FourLevelDither.csproj" />
   <Project Path="tools/DvdGrayProbe/DvdGrayProbe.csproj" />
   <Project Path="tools/BluRayByteProbe/BluRayByteProbe.csproj" />
+  <Project Path="src/DiscImageStudio.Linux/DiscImageStudio.Linux.csproj" />
+  <Project Path="tests/DiscImageStudio.LinuxTests/DiscImageStudio.LinuxTests.csproj" />
 </Solution>
