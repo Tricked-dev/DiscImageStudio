@@ -14,6 +14,7 @@ public partial class ExportViewModel : ObservableObject
     private ProjectViewModel? _project;
     private string[]? _lastArguments;
 
+    [ObservableProperty] private string _blankCapacityInfo = string.Empty;
     [ObservableProperty] private string? _lastOutput;
     [ObservableProperty] private string? _lastSummary;
     [ObservableProperty] private string _spaceInfo = string.Empty;
@@ -28,6 +29,7 @@ public partial class ExportViewModel : ObservableObject
             if (e.PropertyName == nameof(MainViewModel.IsBusy))
             {
                 GenerateCommand.NotifyCanExecuteChanged();
+                CheckBlankCapacityCommand.NotifyCanExecuteChanged();
             }
         };
     }
@@ -80,6 +82,7 @@ public partial class ExportViewModel : ObservableObject
 
         _project = _main.Project;
         LastOutput = null;
+        BlankCapacityInfo = string.Empty;
         LastSummary = null;
         _lastArguments = null;
         if (_project is not null)
@@ -92,8 +95,10 @@ public partial class ExportViewModel : ObservableObject
 
     private void Project_PropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
+        BlankCapacityInfo = string.Empty;
         if (e.PropertyName is nameof(ProjectViewModel.OutputPath) or nameof(ProjectViewModel.DataDirectory)
-            or nameof(ProjectViewModel.Sectors) or nameof(ProjectViewModel.HasFiles))
+            or nameof(ProjectViewModel.Sectors) or nameof(ProjectViewModel.HasFiles)
+            or nameof(ProjectViewModel.FilesInTransparency) or nameof(ProjectViewModel.DvdGrating))
         {
             NotifyAll();
         }
@@ -107,6 +112,7 @@ public partial class ExportViewModel : ObservableObject
         OnPropertyChanged(nameof(EstimatedSize));
         OnPropertyChanged(nameof(CancelSupported));
         GenerateCommand.NotifyCanExecuteChanged();
+        CheckBlankCapacityCommand.NotifyCanExecuteChanged();
         RefreshSpace();
     }
 
@@ -177,6 +183,26 @@ public partial class ExportViewModel : ObservableObject
         }
 
         _project.OutputPath = path;
+    }
+
+    [RelayCommand(CanExecute = nameof(CanGenerate))]
+    private async Task CheckBlankCapacity()
+    {
+        ProjectViewModel? project = _project;
+        if (project is null || !project.IsDvd || !project.HasFiles) return;
+        DiscSettings settings = project.Snapshot();
+        BlankCapacityInfo = string.Empty;
+        await _main.RunJobAsync("Checking DVD blank areas", async job =>
+        {
+            string composite = await project.EnsureExportCompositeAsync(job.Token)
+                ?? throw new InvalidOperationException("Import an image on Design first.");
+            var capacity = await Task.Run(() => DiscImageStudio.Dvd.DvdStreamingGenerator.EstimateTransparentCapacity(
+                settings.DataDirectory, composite, settings.ToDvd(), settings.EffectiveVolumeLabel, job.Token), job.Token);
+            string text = $"Blank area: {Num.Bytes(capacity.BlankBytes)}; files need about {Num.Bytes(capacity.NeededBytes)}. "
+                + (capacity.Fits ? "Files fit." : "Not enough blank area.");
+            job.Log(text);
+            if (_project == project && project.Snapshot() == settings) BlankCapacityInfo = text;
+        }, cancellable: true);
     }
 
     private bool CanGenerate() => _project is not null && !_main.IsBusy;

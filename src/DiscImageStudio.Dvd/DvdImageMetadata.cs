@@ -24,9 +24,13 @@ public sealed record DvdImageMetadata(
     bool ReadCompatibility = false,
     uint? UsableSectors = null,
     double? SourceImageOuterRadiusMm = null,
-    string? ReadCompatibilityMode = null)
+    string? ReadCompatibilityMode = null,
+    IReadOnlyList<DvdFileSegment>? FileSegments = null,
+    bool Grating = false)
 {
     public uint OutputSectors => UsableSectors ?? TotalSectors;
+    /// <summary>True when the files sit in blank parts of the picture, interleaved with the drawing.</summary>
+    public bool FilesInTransparentRegion => FileSegments is { Count: > 0 };
 
     /// <summary>Reads the sidecar of an ISO, or null when it is absent or unreadable.</summary>
     public static DvdImageMetadata? TryLoad(string isoPath)
@@ -80,6 +84,21 @@ public sealed record DvdImageMetadata(
                 && iso.ValueKind == JsonValueKind.Object
                 && iso.TryGetProperty("mountableFilesystem", out JsonElement mountable)
                 && mountable.ValueKind == JsonValueKind.True;
+            List<DvdFileSegment> segments = [];
+            if (document.RootElement.TryGetProperty("fileSegments", out JsonElement segmentArray)
+                && segmentArray.ValueKind == JsonValueKind.Array)
+            {
+                uint previousEnd = 0;
+                foreach (JsonElement item in segmentArray.EnumerateArray())
+                {
+                    uint start = GetUInt32(item, "startLba");
+                    uint end = GetUInt32(item, "endLbaExclusive");
+                    if (end <= start || start < previousEnd || end > (usableSectors ?? totalSectors))
+                        return null;
+                    segments.Add(new DvdFileSegment(start, end));
+                    previousEnd = end;
+                }
+            }
             DvdTrackGeometry.ValidatePitchCoefficients(linear, quadratic, cubic);
             string? readCompatibilityMode = document.RootElement.TryGetProperty("readCompatibility", out JsonElement mode)
                 && mode.ValueKind == JsonValueKind.String && DvdReadCompatibilityModes.IsSupported(mode.GetString())
@@ -89,7 +108,7 @@ public sealed record DvdImageMetadata(
                 && innerRadius > 0 && outerRadius > innerRadius
                 ? new DvdImageMetadata(totalSectors, innerRadius, outerRadius, linear, quadratic, cubic,
                     filesAtOuterRing, drawingStart, drawingStart + drawingSectors, hasFileSystem, readCompatibility,
-                    usableSectors, sourceImageOuterRadiusMm, readCompatibilityMode)
+                    usableSectors, sourceImageOuterRadiusMm, readCompatibilityMode, segments, document.RootElement.TryGetProperty("grating", out var grating) && grating.ValueKind == JsonValueKind.True)
                 : null;
         }
         catch (Exception exception) when (exception is JsonException or IOException or ArgumentException)

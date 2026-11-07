@@ -1,5 +1,6 @@
 using System.Text.Json;
 using DiscImageStudio.Core;
+using DiscImageStudio.Iso;
 using DvdImageSolver.Encoding;
 using DvdImageSolver.Solver;
 
@@ -25,6 +26,7 @@ internal static class Program
                 "encode" => Encode(CliArguments.Parse(args.AsSpan(1))),
                 "calibrate" => Calibrate(CliArguments.Parse(args.AsSpan(1))),
                 "simulate" => Simulate(CliArguments.Parse(args.AsSpan(1))),
+                "grating" => GratingPaletteCommand.Run(CliArguments.Parse(args.AsSpan(1))),
                 "selftest" => RunSelfTests(),
                 _ => throw new ArgumentException($"Unknown command '{args[0]}'."),
             };
@@ -376,6 +378,23 @@ internal static class Program
             arguments.GetDouble("pitch-linear", 0),
             arguments.GetDouble("pitch-quadratic", 0),
             arguments.GetDouble("pitch-cubic", 0));
+        bool grating = false;
+        if (File.Exists(isoPath + ".json"))
+        {
+            using JsonDocument sidecar = JsonDocument.Parse(File.ReadAllText(isoPath + ".json"));
+            grating = sidecar.RootElement.TryGetProperty("grating", out var mode) && mode.ValueKind == JsonValueKind.True;
+        }
+        if (arguments.Has("grating")) grating = ReadBoolean(arguments, "grating", false);
+        if (grating)
+        {
+            var colour = GratingReadbackRenderer.Render(isoPath, outputPath,
+                new(totalSectors, startLba, fillSectors, options.PsnOffset, options.InnerRadiusMm, options.OuterRadiusMm,
+                    options.ChannelBitLengthNm, options.Clockwise, options.PreviewSize, options.SamplesPerSector,
+                    options.PitchLinear, options.PitchQuadratic, options.PitchCubic));
+            WriteJson(outputPath + ".json", colour);
+            Console.WriteLine($"grating readback: {colour.PreviewSize}x{colour.PreviewSize}, output={outputPath}");
+            return 0;
+        }
         IsoReadbackSummary summary = IsoReadbackRenderer.Render(isoPath, outputPath, options);
         WriteJson(outputPath + ".json", summary);
         Console.WriteLine(
@@ -389,6 +408,8 @@ internal static class Program
     {
         bool hybridMode = arguments.Has("data-dir");
         bool filesAtOuterRing = ReadFilesAtOuterRing(arguments);
+        bool filesInTransparency = ReadFilesInTransparency(arguments);
+        List<(uint StartLba, uint EndLbaExclusive)>? fileSegments = null;
         if (!arguments.Has("image") || arguments.Has("target"))
         {
             throw new ArgumentException("Range or fast output requires --image and does not accept --target.");
@@ -434,6 +455,10 @@ internal static class Program
             arguments,
             hybridMode ? "dispersion" : "full");
         bool fastOutput = ReadBoolean(arguments, "fast-output", fallback: hybridMode);
+        bool exactPhysicalChain = ReadBoolean(
+            arguments,
+            "exact-physical-chain",
+            fallback: filesInTransparency);
         if (fastOutput && algorithm != SolverAlgorithm.Dispersion)
         {
             throw new ArgumentException("--fast-output true requires --algorithm dispersion.");
@@ -467,12 +492,56 @@ internal static class Program
                     "Hybrid mode requires --psn-offset to be aligned to a 16-sector ECC Block.");
             }
 
-            HybridIsoImageWriter.LayoutPlan isoLayout = HybridIsoImageWriter.Plan(
-                arguments.Require("data-dir"),
-                imageMapping.TotalSectors,
-                arguments.Get("volume-label", "DVD_IMAGE"),
-                filesAtOuterRing);
-            uint minimumDrawingLba = AlignToEccBlock(filesAtOuterRing
+            HybridIsoImageWriter.LayoutPlan isoLayout;
+            if (filesInTransparency)
+            {
+                if (!fastOutput)
+                    throw new ArgumentException("--file-position transparent requires --fast-output true.");
+                if (arguments.Has("drawing-start-lba"))
+                    throw new ArgumentException("--drawing-start-lba cannot be combined with --file-position transparent.");
+                HybridIsoImageWriter.LayoutPlan probe = HybridIsoImageWriter.Plan(
+                    arguments.Require("data-dir"), imageMapping.OutputSectors,
+                    arguments.Get("volume-label", "DVD_IMAGE"));
+                uint probeStart = AlignToEccBlock(probe.MetadataEndLbaExclusive, psnOffset);
+                uint fileSectors = probe.DataEndLbaExclusive - probe.MetadataEndLbaExclusive;
+                if (fileSectors == 0)
+                {
+                    isoLayout = probe;
+                }
+                else
+                {
+                    uint needed = checked(fileSectors + 32);
+                    bool whiteIsBlank = ReadBoolean(arguments, "white-is-blank", fallback: true);
+                    bool backgroundIsBlank = ReadBoolean(arguments, "background-is-blank", fallback: true);
+                    IReadOnlyList<DvdFreeRegion> runs = DvdTransparencyScanner.FindFreeRuns(
+                        arguments.Require("image"), imageMapping, probeStart, default,
+                        whiteIsBlank ? DvdTransparencyScanner.DefaultWhiteLuminance : DvdTransparencyScanner.TransparentOnly,
+                        backgroundIsBlank);
+                    IReadOnlyList<DvdFreeRegion> chosen = DvdTransparencyScanner.ChooseSegments(runs, needed)
+                        ?? throw new ArgumentException(
+                            $"The picture leaves only {DvdTransparencyScanner.TotalSectors(runs)} blank sectors "
+                            + $"but the files need {needed}.");
+                    isoLayout = HybridIsoImageWriter.Plan(
+                        arguments.Require("data-dir"), imageMapping.OutputSectors,
+                        arguments.Get("volume-label", "DVD_IMAGE"),
+                        candidateSegments: chosen.Select(run =>
+                            new Iso9660ImageWriter.IsoSegment(run.StartLba, run.EndLbaExclusive)).ToList());
+                    fileSegments = [];
+                    foreach (Iso9660ImageWriter.IsoSegment used in isoLayout.FileSegments)
+                    {
+                        fileSegments.Add((used.StartLba, used.EndLbaExclusive));
+                    }
+                }
+            }
+            else
+            {
+                isoLayout = HybridIsoImageWriter.Plan(
+                    arguments.Require("data-dir"),
+                    imageMapping.OutputSectors,
+                    arguments.Get("volume-label", "DVD_IMAGE"),
+                    filesAtOuterRing);
+            }
+            uint minimumDrawingLba = AlignToEccBlock(filesAtOuterRing || isoLayout.FilesInRegion
                 ? isoLayout.MetadataEndLbaExclusive : isoLayout.DataEndLbaExclusive, psnOffset);
             lba = arguments.Has("drawing-start-lba")
                 ? arguments.GetUInt("drawing-start-lba", 0)
@@ -490,7 +559,7 @@ internal static class Program
                     "--drawing-start-lba plus --psn-offset must be aligned to 16 sectors.");
             }
 
-            if (lba > imageMapping.TotalSectors)
+            if (lba > imageMapping.OutputSectors)
             {
                 throw new ArgumentOutOfRangeException(
                     nameof(arguments),
@@ -499,7 +568,7 @@ internal static class Program
 
             uint drawingEndLba = filesAtOuterRing
                 ? isoLayout.FileDataStartLba / DvdEccBlockEncoder.SectorCount * DvdEccBlockEncoder.SectorCount
-                : imageMapping.TotalSectors;
+                : imageMapping.OutputSectors;
             if (drawingEndLba < lba)
                 throw new ArgumentException("The selected drawing range overlaps the outer-ring files.");
             fillSectors = checked((drawingEndLba - lba)
@@ -516,7 +585,7 @@ internal static class Program
             Console.WriteLine(
                 $"hybrid ISO: files={hybridIso.FileCount}, directories={hybridIso.DirectoryCount}, "
                 + $"data={hybridIso.FileBytes} bytes, filesystem end LBA={hybridIso.DataEndLbaExclusive}, "
-                + $"files={(filesAtOuterRing ? "outer" : "inner")}, drawing LBA {lba}..{lba + fillSectors - 1}");
+                + $"files={(filesAtOuterRing ? "outer" : fileSegments is { } segs ? $"transparent ({segs.Count} segments)" : "inner")}, drawing LBA {lba}..{lba + fillSectors - 1}");
             if (!fastOutput)
             {
                 Console.WriteLine($"replaying inner-ring modulation boundary: 0..{lba - 1}");
@@ -566,7 +635,9 @@ internal static class Program
                 isoOutputPath,
                 options,
                 progressEvery,
-                hybridIso);
+                hybridIso,
+                fileSegments,
+                exactPhysicalChain);
         }
 
         Console.WriteLine(
@@ -734,23 +805,30 @@ internal static class Program
 
     private static bool ReadFilesAtOuterRing(CliArguments arguments)
     {
-        bool outer = arguments.Get("file-position", "inner") switch
+        string position = arguments.Get("file-position", "inner");
+        bool outer = position switch
         {
             "inner" => false,
             "outer" => true,
-            _ => throw new ArgumentException("--file-position must be 'inner' or 'outer'."),
+            "transparent" => false,
+            _ => throw new ArgumentException("--file-position must be 'inner', 'outer' or 'transparent'."),
         };
-        if (outer && !arguments.Has("data-dir"))
-            throw new ArgumentException("--file-position outer requires --data-dir.");
+        if ((outer || position == "transparent") && !arguments.Has("data-dir"))
+            throw new ArgumentException($"--file-position {position} requires --data-dir.");
         return outer;
     }
+
+    private static bool ReadFilesInTransparency(CliArguments arguments)
+        => arguments.Get("file-position", "inner") == "transparent";
 
     private static int WriteFastDispersionImage(
         CliArguments arguments,
         string isoOutputPath,
         MultiBlockSolveOptions options,
         int progressEvery,
-        HybridIsoWriteSummary? hybridIso)
+        HybridIsoWriteSummary? hybridIso,
+        IReadOnlyList<(uint StartLba, uint EndLbaExclusive)>? fileSegments = null,
+        bool exactPhysicalChain = false)
     {
         Console.WriteLine(
             $"fast raw ISO fill: LBA {options.StartLba}.."
@@ -765,30 +843,110 @@ internal static class Program
         if (options.ReadCompatibility)
             Console.WriteLine($"read compatibility={options.ReadCompatibilityMode} (experimental drawing-byte protection)");
 
-        FastDispersionWriteResult result = FastDvdImageFileWriter.WritePrepared(
-            arguments.Require("image"),
-            isoOutputPath,
-            options,
-            hybridIso,
-            progress =>
+        void Report(FastDispersionProgress progress, int offsetBlocks, int allBlocks)
+        {
+            int done = offsetBlocks + progress.CompletedBlocks;
+            if (done == 1 || done == allBlocks || done % progressEvery == 0)
             {
-                if (progress.CompletedBlocks == 1
-                    || progress.CompletedBlocks == progress.TotalBlocks
-                    || progress.CompletedBlocks % progressEvery == 0)
-                {
-                    double mebibytes = progress.CompletedBlocks
-                        * (double)DvdEccBlockEncoder.PayloadBytesPerBlock
-                        / (1024 * 1024);
-                    double rate = progress.Elapsed.TotalSeconds <= 0
-                        ? 0
-                        : mebibytes / progress.Elapsed.TotalSeconds;
-                    Console.WriteLine(
-                        $"block {progress.CompletedBlocks}/{progress.TotalBlocks}, "
-                        + $"LBA={progress.BlockLba}, controlled={progress.ControlledWords}, "
-                        + $"rate={rate:F2} MiB/s, elapsed={progress.Elapsed.TotalSeconds:F1}s");
-                }
-            });
+                double mebibytes = done * (double)DvdEccBlockEncoder.PayloadBytesPerBlock / (1024 * 1024);
+                double rate = progress.Elapsed.TotalSeconds <= 0 ? 0 : mebibytes / progress.Elapsed.TotalSeconds;
+                Console.WriteLine(
+                    $"block {done}/{allBlocks}, "
+                    + $"LBA={progress.BlockLba}, controlled={progress.ControlledWords}, "
+                    + $"rate={rate:F2} MiB/s, elapsed={progress.Elapsed.TotalSeconds:F1}s");
+            }
+        }
 
+        string imagePath = arguments.Require("image");
+        ModulationBoundary? finalBoundary = null;
+        bool exactReplay = false;
+        FastDispersionWriteResult result;
+        if (fileSegments is { Count: > 0 })
+        {
+            HybridIsoImageWriter.LayoutPlan regionPlan = HybridIsoImageWriter.Plan(
+                arguments.Require("data-dir"), options.ImageMapping.OutputSectors,
+                arguments.Get("volume-label", "DVD_IMAGE"),
+                candidateSegments: fileSegments.Select(s =>
+                    new Iso9660ImageWriter.IsoSegment(s.StartLba, s.EndLbaExclusive)).ToList());
+            ModulationBoundary regionBoundary = exactPhysicalChain
+                ? ReplayIsoBoundary(isoOutputPath, options.StartLba, options.PsnOffset, new ModulationBoundary(1, 0, IsLand: true))
+                : new ModulationBoundary(1, 0, IsLand: true);
+            using FileStream raw = new(isoOutputPath, FileMode.Open, FileAccess.ReadWrite, FileShare.Read,
+                bufferSize: 128 * 1024, FileOptions.RandomAccess);
+            raw.Position = checked((long)options.StartLba * IsoImageWriter.LogicalSectorBytes);
+            using Iso9660ImageWriter.FileRegionWriter files = HybridIsoImageWriter.CreateFileRegionWriter(regionPlan);
+            MultiBlockSolveOptions eccOptions = options with { PreserveExistingIso = false };
+            FastDvdStreamSummary summary = FastDispersionImageWriter.WriteStreamEccAware(
+                imagePath, raw, eccOptions, fileSegments,
+                (startLba, sectors) => files.FillSectors(sectors),
+                regionBoundary,
+                value => Console.WriteLine(
+                    $"block {value.CompletedBlocks}/{value.TotalBlocks}, LBA={value.BlockLba}, "
+                    + $"elapsed={value.Elapsed.TotalSeconds:F1}s"),
+                replayPhysicalBoundary: exactPhysicalChain);
+            finalBoundary = summary.FinalBoundary;
+            exactReplay = exactPhysicalChain && finalBoundary is not null;
+            result = new FastDispersionWriteResult(
+                summary.CompletedBlocks, summary.SectorsWritten, summary.ControlledWords,
+                summary.Elapsed, SparseIso: false, options.ImageMapping.OutputSectors, summary.CompatibilityChanges);
+        }
+        else
+        {
+            result = FastDvdImageFileWriter.WritePrepared(
+                imagePath, isoOutputPath, options, hybridIso, p => Report(p, 0, p.TotalBlocks));
+        }
+
+        if (fileSegments is { Count: > 0 } || exactPhysicalChain)
+        {
+            ImageMappingOptions imageMapping = options.ImageMapping;
+            var metadata = new
+            {
+                format = "dvd-nrzi-disc-fill-v2",
+                sourceImage = Path.GetFullPath(arguments.Require("image")),
+                isoOutput = Path.GetFullPath(isoOutputPath),
+                startLba = options.StartLba,
+                filesAtOuterRing = hybridIso?.FilesAtOuterRing ?? false,
+                fileSegments = (fileSegments ?? []).Select(s => new { startLba = s.StartLba, endLbaExclusive = s.EndLbaExclusive }).ToArray(),
+                fillSectors = options.FillSectors,
+                totalSectors = imageMapping.TotalSectors,
+                psnOffset = $"0x{options.PsnOffset:X}",
+                blockCount = result.CompletedBlocks,
+                algorithm = "dispersion",
+                fastOutput = true,
+                fastParallelism = options.FastParallelism == 0
+                    ? Environment.ProcessorCount
+                    : options.FastParallelism,
+                readCompatibility = options.ReadCompatibility ? options.ReadCompatibilityMode : "off",
+                compatibilityChanges = result.CompatibilityChanges,
+                exactEccEfmReplay = exactReplay,
+                finalBoundary = finalBoundary is { } boundary ? new
+                {
+                    state = boundary.State,
+                    dsv = boundary.Dsv,
+                    level = boundary.LevelName,
+                } : null,
+                dispersionPool = DispersionPaletteMetadata(),
+                constraintStep = imageMapping.SampleEveryChannelBits,
+                constraintStepUsed = false,
+                totalScore = 0,
+                totalScoreMaximum = result.ControlledWords,
+                scoreMetric = "payload-transition-class-error",
+                normalizedScore = 0.0,
+                elapsedSeconds = result.Elapsed.TotalSeconds,
+                imageMapping,
+                pitchPolynomial = DescribePitchPolynomial(imageMapping),
+                iso = new
+                {
+                    mode = hybridIso?.Mode ?? "raw-sector-image",
+                    logicalSectorBytes = IsoImageWriter.LogicalSectorBytes,
+                    imageSectors = result.IsoSectors,
+                    sparseFile = result.SparseIso,
+                    mountableFilesystem = hybridIso is not null,
+                    hybrid = hybridIso,
+                },
+            };
+            WriteJson(isoOutputPath + ".json", metadata);
+        }
         double totalMebibytes = result.FilledSectors
             * (double)IsoImageWriter.LogicalSectorBytes
             / (1024 * 1024);
@@ -800,7 +958,7 @@ internal static class Program
             + (options.ReadCompatibility
                 ? $"compatibility changes={result.CompatibilityChanges}, payload-transition-class-error=not evaluated, "
                 : "payload-transition-class-error=0, ")
-            + "boundary=not replayed, "
+            + $"boundary={(exactReplay ? "replayed" : "not replayed")}, "
             + $"rate={finalRate:F2} MiB/s, elapsed={result.Elapsed.TotalSeconds:F1}s, "
             + $"output={isoOutputPath}");
         return 0;
@@ -858,7 +1016,7 @@ internal static class Program
     {
         int threshold = ReadByteRange(arguments, "image-threshold", 128, minimum: 0);
         int alphaThreshold = ReadByteRange(arguments, "alpha-threshold", 1, minimum: 1);
-        return new ImageMappingOptions(
+        ImageMappingOptions mapping = new(
             ReadTotalSectors(arguments),
             arguments.GetDouble("inner-radius-mm", 24.0),
             arguments.GetDouble("outer-radius-mm", 58.0),
@@ -871,7 +1029,17 @@ internal static class Program
             arguments.GetDouble("pitch-linear", 0),
             arguments.GetDouble("pitch-quadratic", 0),
             arguments.GetDouble("pitch-cubic", 0),
-            ReadToneProfile(arguments));
+            ReadToneProfile(arguments), UsableSectors: arguments.Has("usable-sectors") ? arguments.GetUInt("usable-sectors", 0) : null);
+        if (mapping.UsableSectors is { } usable)
+        {
+            if (usable == 0 || usable > mapping.TotalSectors || usable % 16 != 0)
+                throw new ArgumentException("--usable-sectors must be a positive multiple of 16 within the physical geometry.");
+            double length = mapping.TotalSectors * 38688.0 * mapping.ChannelBitLengthNm * 1e-6;
+            var geometry = DvdTrackGeometry.Create(mapping.InnerRadiusMm, mapping.OuterRadiusMm, length,
+                mapping.PitchLinear, mapping.PitchQuadratic, mapping.PitchCubic);
+            mapping = mapping with { ImageOuterRadiusMm = geometry.RadiusAtArcLength(length * usable / mapping.TotalSectors) };
+        }
+        return mapping;
     }
 
     /// <summary>Optional tone mapping of the sampled picture. Absent means the historical
@@ -1374,10 +1542,14 @@ internal static class Program
               --constraint-step N       Constrain every Nth channel bit (single block default 1)
               --fill-sectors N          Fill N consecutive sectors; N must be a multiple of 16
               --data-dir DIR            Hybrid disc: store this directory together with the drawing
-              --file-position MODE      inner (default) or outer; outer requires --data-dir
+              --file-position MODE      inner (default), outer or transparent; outer/transparent require --data-dir
+                                        transparent places files in blank parts of the picture
+              --white-is-blank true|false Treat near-white pixels as blank for transparent placement (default true)
+              --background-is-blank true|false Treat the dominant flat ring colour as blank (default true)
               --drawing-start-lba N     Hybrid override; must follow all files and align to an ECC Block
-              --fast-output true|false Direct dispersion ISO output without ECC/EFM replay
-                                        (default false; true in hybrid mode)
+              --fast-output true|false Direct dispersion ISO output (default false; true in hybrid mode)
+              --exact-physical-chain true|false Replay ECC/EFM boundary across every output block
+                                        (default true for transparent file embedding)
               --fast-parallelism 0..64 Fast-output workers; 0 selects processor count (default 0)
               --read-compatibility true|false
                                         Experimental periodic 0x9B protection for fast dispersion (default false)
@@ -1425,6 +1597,9 @@ internal static class Program
             eligible white drawing bytes with 0x9B at a 16-byte interval to interrupt long 0x92 runs. It may
             improve readback on affected drives/media; it is experimental and defaults off.
             Full/state-control output and exact scrambled-byte test patterns do not accept this option.
+            With --fast-output true, payload selection remains the same. By default the fast path
+            skips ECC/EFM boundary replay; --exact-physical-chain true restores the sequential
+            boundary chain and records finalBoundary in the JSON sidecar.
 
             Hybrid --data-dir mode builds a mountable ISO9660/Joliet filesystem. Files default to the inner ring;
             --file-position outer reserves the outer ring for files and draws between front metadata and files.

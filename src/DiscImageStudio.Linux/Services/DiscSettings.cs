@@ -23,7 +23,9 @@ public sealed record DiscSettings(
     bool Interleave,
     bool WriteCue,
     bool DvdReadCompatibility = false,
-    long? UsableSectors = null)
+    long? UsableSectors = null,
+    bool FilesInTransparency = false,
+    bool DvdGrating = false)
 {
     public long OutputSectors => UsableSectors ?? (Family == OpticalDiscFamily.Dvd ? Sectors / 16 * 16 : Sectors);
 
@@ -89,6 +91,16 @@ public sealed record DiscSettings(
     /// Windows export page builds (and therefore to what the CLI accepts).</summary>
     public string[] BuildGenerateCommand(string compositePath, string outputPath)
     {
+        if (Family == OpticalDiscFamily.Dvd && DvdGrating)
+        {
+            if (HasFiles) throw new ArgumentException("Colour gratings currently require picture-only output. Clear the files folder or turn off colour gratings.");
+            if (DvdReadCompatibility) throw new ArgumentException("Turn off DVD read compatibility for colour gratings.");
+            return ["grating", "--image", compositePath, "--output", outputPath,
+                "--total-sectors", Num.Format(Sectors), "--usable-sectors", Num.Format(OutputSectors),
+                "--inner-radius-mm", Num.Format(InnerRadiusMm), "--outer-radius-mm", Num.Format(OuterRadiusMm),
+                "--pitch-linear", Num.Format(PitchLinear), "--pitch-quadratic", Num.Format(PitchQuadratic),
+                "--pitch-cubic", Num.Format(PitchCubic), "--volume-label", EffectiveVolumeLabel];
+        }
         ToneProfile tone = EffectiveTone;
         List<string> arguments;
         switch (Family)
@@ -119,7 +131,7 @@ public sealed record DiscSettings(
                 ];
                 if (HasFiles)
                 {
-                    arguments.AddRange(["--data-dir", DataDirectory.Trim(), "--file-position", FilesAtOuterRing ? "outer" : "inner"]);
+                    arguments.AddRange(["--data-dir", DataDirectory.Trim(), "--file-position", FilesInTransparency ? "transparent" : FilesAtOuterRing ? "outer" : "inner"]);
                 }
                 else
                 {

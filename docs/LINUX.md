@@ -15,6 +15,30 @@ The auto-calibration tool needs photos of its own coded target; the ordinary cro
 
 PR #54 uses SwiftUI and Apple DiscRecording and is not included in this Linux desktop. No physical recording is part of building, installing or opening this app.
 
+## Additional artwork and filesystem features
+
+This branch selectively integrates [PR #54](https://github.com/JiaFeiMiao-K-Cat/DiscImageStudio/pull/54) at `e7f4716` (portable DVD diffraction motifs and colour read-back, not the macOS application), [PR #32](https://github.com/JiaFeiMiao-K-Cat/DiscImageStudio/pull/32) at `3c9ad56` (preserve filename extensions), and [PR #96](https://github.com/JiaFeiMiao-K-Cat/DiscImageStudio/pull/96) at `d696276` (sector-granular blank-area DVD file placement). Their shared code is adapted to v1.5.0 physical geometry and usable-sector limits.
+
+- **Colour gratings:** enable **Experimental DVD colour gratings** on Export. This is picture-only output; clear the files folder and disable DVD read compatibility. Source colours map to diffraction motifs, with A5/92 retained for black/white. Design projection and artifact read-back show nominal palette colours, not a prediction of physical appearance under arbitrary lighting. Tone sliders and measured-radius projection are not applied to this mode. The ISO sidecar saves the grating mode, calibrated geometry and writable capacity, so later project edits do not change artifact read-back.
+- **Blank-area files:** choose a files folder, then enable **Place files in blank artwork areas**. On Export, **Check blank-area capacity** scans the full-resolution composite without generating an ISO. Transparent pixels, near-white pixels, and a dominant flat background may hold file extents. CLI users can independently disable white/background detection. The projection marks estimated file-sector footprints in yellow; the Design canvas does not show a radial guide for scattered extents. Export rescans the generation-resolution composite, so that preview is an estimate. File sectors are locked while mixed blocks are ECC encoded; exact boundary replay includes the filesystem prefix. Ordinary inner/outer-ring placement remains the default.
+- **Filename extensions:** ISO9660/Joliet shortening preserves short extensions such as `.png` and `.jpg`; collisions use `name~2.jpg` rather than appending after the extension.
+
+CLI examples (these create files only):
+
+```sh
+disc-image-studio grating --image artwork.png --output artwork.iso \
+  --total-sectors 2298496 --usable-sectors 2297888 \
+  --inner-radius-mm 24 --outer-radius-mm 58
+
+disc-image-studio solve --image artwork.png --iso-output with-files.iso \
+  --total-sectors 2298496 --usable-sectors 2297888 \
+  --inner-radius-mm 24 --outer-radius-mm 58 \
+  --data-dir ./files --file-position transparent \
+  --white-is-blank true --background-is-blank true
+```
+
+Use the geometry/capacity of your own calibrated disc; the numbers above illustrate the options. Validation on 2026-11-07: the full solution cross-build passed with zero warnings/errors; 26 Linux regressions and the DVD selftest passed; all seven native X11 workspace snapshots rendered at 1366×768. The Windows runtime suite was not run on Linux. These features have automated small-artifact validation, not physical-drive validation. No disc recording is required by tests, packaging or installation.
+
 The original Linux PR documentation follows. Its release links refer to that contributor's fork; local modifications described above are specific to this checkout.
 
 ---

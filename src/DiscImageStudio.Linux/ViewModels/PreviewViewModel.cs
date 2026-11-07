@@ -39,7 +39,9 @@ public partial class PreviewViewModel : ObservableObject
         set => IsReadback = !value;
     }
 
-    public string ModeDescription => IsReadback
+    public string ModeDescription => _project?.DvdGrating == true && !IsReadback
+        ? "Nominal DVD diffraction palette preview. Physical colours depend on lighting, viewing angle and media. Tone controls and measured radii are not applied in this experimental mode."
+        : IsReadback
         ? "Decodes the generated file and draws each byte where the reader meets it on the spiral. Grey marks data that is not part of the picture (filesystem, ECC, reserved space)."
         : "Projects the design through the same geometry and tone mapping the generator uses. Turn on measured radii to see how the picture bends on a disc whose real track geometry differs.";
 

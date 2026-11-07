@@ -53,6 +53,10 @@ internal static partial class Program
             Run("projection previews for every family", () => Projections(work, image, files));
             await RunAsync("artifact readback keeps exported geometry after project edits", () => ArtifactGeometry(work, image));
             await RunAsync("usable capacity limits exported artifacts", () => UsableCapacity(work, image));
+            Run("ISO filenames preserve extensions", IsoIdentifierTests.Run);
+            await RunAsync("DVD colour gratings and saved-mode readback", () => ColourGratings(work));
+            await RunAsync("DVD blank-area placement preserves file bytes and usable capacity", () => BlankAreaFiles(work));
+            Run("community feature settings survive reopening", () => CommunitySettingsRoundTrip(work));
             Run("project round trip keeps every field", () => ProjectRoundTrip(work, image));
             Run("legacy project without tone opens with the hard threshold", () => LegacyToneProject(work));
             Run("project setup validates geometry", SetupValidation);

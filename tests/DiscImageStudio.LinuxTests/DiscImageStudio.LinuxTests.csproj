@@ -19,5 +19,6 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../../src/DiscImageStudio.Linux/DiscImageStudio.Linux.csproj" />
+    <Compile Include="../DiscImageStudio.ArchitectureTests/IsoIdentifierTests.cs" Link="IsoIdentifierTests.cs" />
   </ItemGroup>
 </Project>

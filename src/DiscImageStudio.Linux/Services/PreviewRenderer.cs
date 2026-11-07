@@ -4,6 +4,7 @@ using DiscImageStudio.Core;
 using DiscImageStudio.Dvd;
 using DvdImageSolver;
 using DvdImageSolver.Solver;
+using SkiaSharp;
 
 namespace DiscImageStudio.Linux.Services;
 
@@ -44,6 +45,15 @@ public static class PreviewRenderer
             case OpticalDiscFamily.Dvd:
             {
                 DvdStreamingOptions dvd = settings.ToDvd();
+                if (settings.DvdGrating)
+                {
+                    var mapping = new DvdImageSolver.Solver.ImageMappingOptions(dvd.TotalSectors,
+                        dvd.InnerRadiusMm, dvd.OuterRadiusMm, dvd.ChannelBitLengthNm, 0, true, 128, 1,
+                        PitchLinear: dvd.PitchLinear, PitchQuadratic: dvd.PitchQuadratic, PitchCubic: dvd.PitchCubic,
+                        UsableSectors: dvd.OutputSectors, ImageOuterRadiusMm: dvd.OutputOuterRadiusMm);
+                    GratingPaletteCommand.RenderProjection(compositePath, outputPath, mapping, size, cancellationToken);
+                    return new PreviewInfo(outputPath, dvd.OutputOuterRadiusMm, dvd.InnerRadiusMm, dvd.OutputOuterRadiusMm, []);
+                }
                 CalibrationPreviewOptions options = new(
                     dvd.TotalSectors, 0, dvd.OutputSectors,
                     dvd.InnerRadiusMm, dvd.OuterRadiusMm, actualInner, actualOuter,
@@ -53,6 +63,12 @@ public static class PreviewRenderer
                     dvd.PitchLinear, dvd.PitchQuadratic, dvd.PitchCubic,
                     dvd.Tone);
                 CalibrationPreviewRenderer.Render(compositePath, outputPath, options, cancellationToken);
+                if (settings.FilesInTransparency && settings.HasFiles)
+                {
+                    var plan = DvdStreamingGenerator.PrepareHybridInTransparency(settings.DataDirectory, compositePath,
+                        dvd, settings.EffectiveVolumeLabel, cancellationToken);
+                    OverlayFileSegments(outputPath, plan.FileSegments, dvd, actualInner, actualOuter, cancellationToken);
+                }
                 return new PreviewInfo(outputPath, actualOuter, actualInner, actualOuter, FileBands(settings, actualInner, actualOuter));
             }
 
@@ -115,6 +131,15 @@ public static class PreviewRenderer
                     settings = settings with { InnerRadiusMm = metadata.InnerRadiusMm, OuterRadiusMm = metadata.OuterRadiusMm,
                         Sectors = metadata.TotalSectors, PitchLinear = metadata.PitchLinear,
                         PitchQuadratic = metadata.PitchQuadratic, PitchCubic = metadata.PitchCubic };
+                if (metadata?.Grating == true)
+                {
+                    await Task.Run(() => DvdImageSolver.Solver.GratingReadbackRenderer.Render(generatedFile, outputPath,
+                        new(metadata.TotalSectors, metadata.DrawingStartLba,
+                            metadata.DrawingEndLbaExclusive - metadata.DrawingStartLba, 0x30000,
+                            metadata.InnerRadiusMm, metadata.OuterRadiusMm, 133.3, true, size, 16,
+                            metadata.PitchLinear, metadata.PitchQuadratic, metadata.PitchCubic), cancellationToken), cancellationToken);
+                    return new PreviewInfo(outputPath, metadata.OuterRadiusMm, metadata.InnerRadiusMm, metadata.OuterRadiusMm, []);
+                }
                 string[] arguments =
                 [
                     "simulate",
@@ -175,6 +200,7 @@ public static class PreviewRenderer
     /// Scans the folder, so call it off the UI thread.</summary>
     public static IReadOnlyList<RadialBand> FileBands(DiscSettings settings, double? innerMm = null, double? outerMm = null)
     {
+        if (settings.Family == OpticalDiscFamily.Dvd && settings.FilesInTransparency) return [];
         if (!settings.HasFiles || !Directory.Exists(settings.DataDirectory.Trim()))
         {
             return [];
@@ -230,6 +256,40 @@ public static class PreviewRenderer
         {
             return [];
         }
+    }
+
+    // Sector footprints rather than radial bands: blank-area extents can occupy only part
+    // of a turn. The projection is estimated from its preview composite; export rescans at full resolution.
+    private static void OverlayFileSegments(string path, IReadOnlyList<DvdFileSegment> segments,
+        DvdStreamingOptions dvd, double inner, double outer, CancellationToken cancellationToken)
+    {
+        using SKBitmap bitmap = SKBitmap.Decode(path);
+        double length = dvd.TotalSectors * 38688.0 * dvd.ChannelBitLengthNm * 1e-6;
+        var geometry = DvdTrackGeometry.Create(inner, outer, length, dvd.PitchLinear, dvd.PitchQuadratic, dvd.PitchCubic);
+        double center = (bitmap.Width - 1) / 2.0;
+        bool[] occupied = new bool[bitmap.Width * bitmap.Height];
+        foreach (var segment in segments)
+            for (uint sector = segment.StartLba; sector < segment.EndLbaExclusive; sector++)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                for (int sample = 0; sample < 8; sample++)
+                {
+                    var (r, angle) = geometry.AtArcLengthFast((sector + (sample + 0.5) / 8) * length / dvd.TotalSectors);
+                    int x = (int)Math.Round(center + center * r / outer * Math.Cos(-angle));
+                    int y = (int)Math.Round(center - center * r / outer * Math.Sin(-angle));
+                    if ((uint)x < (uint)bitmap.Width && (uint)y < (uint)bitmap.Height) occupied[y * bitmap.Width + x] = true;
+                }
+            }
+        for (int i = 0; i < occupied.Length; i++)
+        {
+            if (!occupied[i]) continue;
+            int x = i % bitmap.Width, y = i / bitmap.Width;
+            SKColor c = bitmap.GetPixel(x, y);
+            bitmap.SetPixel(x, y, new SKColor((byte)((c.Red + 250) / 2),
+                (byte)((c.Green + 204) / 2), (byte)((c.Blue + 21) / 2), 255));
+        }
+        using var output = File.Create(path);
+        bitmap.Encode(output, SKEncodedImageFormat.Png, 100);
     }
 
     private static IReadOnlyList<RadialBand> Bands(double inner, double outer, double drawingStart, double drawingEnd)

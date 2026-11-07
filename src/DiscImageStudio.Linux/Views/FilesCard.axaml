@@ -11,7 +11,7 @@
         <c:LucideIcon Data="{x:Static c:Icons.Folder}" Width="16" Height="16" Foreground="{DynamicResource TextSecondaryBrush}" />
         <TextBlock Classes="h3" Text="Files on the disc" />
       </StackPanel>
-      <TextBlock Classes="caption" Text="Optional. The folder becomes a readable filesystem in one ring; the picture fills the rest. Leave empty to draw on the whole disc." />
+      <TextBlock Classes="caption" Text="Optional. The folder becomes a readable filesystem; choose a ring or DVD blank-area placement. Leave empty to draw on the whole disc." />
       <Grid ColumnDefinitions="*,Auto,Auto">
         <TextBox Text="{Binding Project.DataDirectory, FallbackValue=''}" PlaceholderText="No folder: picture only" IsReadOnly="True" />
         <Button Grid.Column="1" Margin="6,0,0,0" Content="Choose…" Command="{Binding BrowseDataCommand}" />
@@ -20,7 +20,11 @@
         </Button>
       </Grid>
       <StackPanel Spacing="10" IsVisible="{Binding Project.HasFiles, FallbackValue=False}">
-        <Border Classes="segments">
+        <CheckBox IsVisible="{Binding Project.IsDvd}" IsChecked="{Binding Project.FilesInTransparency}"
+                  Content="Place files in blank artwork areas" />
+        <TextBlock Classes="caption" IsVisible="{Binding Project.FilesInTransparency}"
+                   Text="DVD only. Transparent, near-white and flat background areas may hold files. Check capacity on Export; scattered file areas are visible in artifact read-back." />
+        <Border Classes="segments" IsEnabled="{Binding !Project.FilesInTransparency}">
           <UniformGrid Columns="2">
             <RadioButton Classes="segment" Content="Inner ring" IsChecked="{Binding Project.FilesAtInnerRing, FallbackValue=True}" />
             <RadioButton Classes="segment" Content="Outer ring" IsChecked="{Binding Project.FilesAtOuterRing, FallbackValue=False}" />

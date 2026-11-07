@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+### 中文
+
+- Linux 桌面集成实验性 DVD 彩色衍射光栅及彩色读回（#54），支持将文件放在图片空白区域并检查容量（#96），ISO9660/Joliet 文件名缩短时保留扩展名（#32）。适配 v1.5.0 的可用扇区限制，保留现有界面和默认输出模式；新增文件完整性、设置持久化及预览回归测试。
+
+### English
+
+- Add experimental DVD colour gratings and colour read-back to the Linux desktop (#54), blank-artwork-area file placement with a capacity check (#96), and extension-preserving ISO9660/Joliet filenames (#32). Preserve v1.5.0 usable-capacity limits, the selected Linux interface and default generation mode; cover file integrity, persisted settings and previews with portable regressions.
+
 ## [1.5.0] - 2026-11-07
 
 ### 中文

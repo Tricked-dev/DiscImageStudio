@@ -41,8 +41,15 @@
         </Border>
 
         <Border Classes="card" IsVisible="{Binding Project.IsDvd}">
+          <StackPanel Spacing="8">
+          <CheckBox IsChecked="{Binding Project.DvdGrating}" Content="Experimental DVD colour gratings" />
+          <TextBlock Classes="caption" IsVisible="{Binding Project.DvdGrating}"
+                     Text="Picture only. Preview shows nominal palette colours; real diffraction depends on disc, drive, lighting and angle. Tone sliders and measured-geometry projection are not applied in this mode. Turn off read compatibility." />
           <CheckBox IsChecked="{Binding Project.DvdReadCompatibility}" Content="Improve DVD read compatibility"
                     ToolTip.Tip="Use the encoder’s optional read-compatibility mapping. This changes the recorded pattern." />
+          <Button Content="Check blank-area capacity" Command="{Binding CheckBlankCapacityCommand}" IsVisible="{Binding Project.FilesInTransparency}" />
+          <TextBlock Classes="caption" Text="{Binding BlankCapacityInfo}" TextWrapping="Wrap" />
+          </StackPanel>
         </Border>
 
         <views:FilesCard DataContext="{Binding $parent[Window].((vm:MainViewModel)DataContext).Design}" />

@@ -26,9 +26,15 @@ public sealed class DvdDiscModule : IOpticalDiscModule
                     new("image", "Source image", DiscOptionValueType.InputFile),
                     new("iso-output", "Output ISO", DiscOptionValueType.OutputFile),
                     new("data-dir", "Hybrid data folder", DiscOptionValueType.InputFolder),
-                    new("file-position", "File placement", DiscOptionValueType.Choice, DefaultValue: "inner", Choices: ["inner", "outer"]),
+                    new("file-position", "File placement", DiscOptionValueType.Choice, DefaultValue: "inner", Choices: ["inner", "outer", "transparent"]),
                     new("read-compatibility", "DVD read compatibility (experimental)", DiscOptionValueType.Boolean, DefaultValue: "false"),
                 ]),
+            new DiscCommandDescriptor(
+                "grating", "Generate DVD colour grating (experimental)",
+                "Encodes source colours as diffraction motifs. Physical colours depend on viewing conditions.",
+                DiscModuleCapabilities.DataImageGeneration,
+                [new("image", "Source image", DiscOptionValueType.InputFile, Required: true),
+                 new("output", "Output ISO", DiscOptionValueType.OutputFile, Required: true)]),
             new DiscCommandDescriptor(
                 "encode",
                 "Encode DVD payload",

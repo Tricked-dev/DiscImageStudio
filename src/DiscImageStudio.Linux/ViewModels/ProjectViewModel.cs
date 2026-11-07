@@ -46,6 +46,8 @@ public partial class ProjectViewModel : ObservableObject
     [ObservableProperty] private bool _filesAtOuterRing;
     [ObservableProperty] private bool _interleave;
     [ObservableProperty] private bool _dvdReadCompatibility;
+    [ObservableProperty] private bool _filesInTransparency;
+    [ObservableProperty] private bool _dvdGrating;
     [ObservableProperty] private bool _writeCue;
 
     [ObservableProperty] private LayerViewModel? _selectedLayer;
@@ -76,6 +78,8 @@ public partial class ProjectViewModel : ObservableObject
         _filesAtOuterRing = document.Outputs.FilesAtOuterRing;
         _interleave = document.Outputs.Interleave;
         _dvdReadCompatibility = document.Outputs.DvdReadCompatibility;
+        _filesInTransparency = document.Outputs.FilesInTransparency;
+        _dvdGrating = document.Outputs.DvdGrating;
         _writeCue = document.Outputs.WriteCue;
 
         foreach (ProjectLayer layer in document.Layers)
@@ -172,7 +176,7 @@ public partial class ProjectViewModel : ObservableObject
     public DiscSettings Snapshot()
         => new(Family, InnerRadiusMm, OuterRadiusMm, Sectors, PitchLinear, PitchQuadratic, PitchCubic,
             Tone, InvertMapping, DataDirectory ?? string.Empty, VolumeLabel ?? string.Empty,
-            FilesAtOuterRing, Interleave, WriteCue, DvdReadCompatibility, UsableSectors);
+            FilesAtOuterRing, Interleave, WriteCue, DvdReadCompatibility, UsableSectors, FilesInTransparency, DvdGrating);
 
     public void LoadImages()
     {
@@ -259,7 +263,7 @@ public partial class ProjectViewModel : ObservableObject
             DataDirectory?.Trim() ?? string.Empty,
             VolumeLabel?.Trim() ?? string.Empty,
             IsCd && Interleave,
-            FilesAtOuterRing, DvdReadCompatibility);
+            FilesAtOuterRing, DvdReadCompatibility, FilesInTransparency, DvdGrating);
         string? thumbnail = null;
         List<LayerRenderItem> items = VisibleRenderItems();
         if (items.Count > 0)
@@ -491,6 +495,8 @@ public partial class ProjectViewModel : ObservableObject
                 PreviewInputsChanged?.Invoke();
                 break;
             case nameof(OutputPath):
+            case nameof(FilesInTransparency):
+            case nameof(DvdGrating):
             case nameof(DvdReadCompatibility):
                 MarkDirty();
                 PreviewInputsChanged?.Invoke();
