@@ -1,5 +1,13 @@
 # 验证说明
 
+## 2026-11-08 — Windows portable USB build on the fork
+
+Merged upstream `df188fa` (including #161, #226 and #234 and the Windows CET compatibility change), then integrated #221 (`b77b08c`) and #222 (`a03a996`). Added the missing seven-language preset name/description entries; the existing Linux preset-translation regression caught their absence.
+
+Validation on Linux with .NET SDK 10.0.403: Release solution cross-build with `EnableWindowsTargeting=true` passed with zero warnings/errors; all 26 Linux executable regressions and the DVD engine selftest passed. The existing `DvdRewritableOverwriteTests` and `MediaSectorCountTests` were also linked unchanged into a temporary non-WPF executable with the architecture suite's assembly name, and passed against the Windows burning library without device access. This checks overwrite opt-in, capacity bounds and write-once rejection; it does not exercise IMAPI hardware.
+
+Self-contained Windows x64 single-file GUI and CLI publishes succeeded. Both outputs were identified as x86-64 Windows PE executables. The Windows-only complete WPF architecture suite, native GUI launch/snapshots, and physical recording were not run on this Linux host. The package handoff explicitly leaves native Windows startup and device checks to the destination PC. This is a development USB package, not a Windows-validated official release.
+
 本页列出当前源码的可复现检查。自动化回归验证算法、文件布局和应用工作流；实际刻录效果仍取决于刻录机、固件与盘片。
 
 ## 本地验证
