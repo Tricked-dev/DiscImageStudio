@@ -226,15 +226,25 @@ def _subpixel(values, index):
 def _peak_table(image, ellipse: Ellipse, first, last, count, sigma_px, floor, robust=True):
     step = 0.25 / ellipse.a
     scales = np.arange(first, last, step)
-    t, _, _, profile, inside = _profiles(image, ellipse, scales, count)
     sigma = sigma_px / 0.25
+    # Sample Gaussian context outside the search interval. Discarding that
+    # context *inside* a narrow interval erases every candidate on small photos
+    # (the final 0.99..1.01 interval is only 9 px wide for a 460 px disc radius).
+    margin = int(math.ceil(4 * sigma))
+    extended = np.concatenate([
+        scales[0] - step * np.arange(margin, 0, -1),
+        scales,
+        scales[-1] + step * np.arange(1, margin + 1),
+    ])
+    t, _, _, profile, inside = _profiles(image, ellipse, extended, count)
     gradient = np.abs(gaussian_filter1d(profile, sigma, axis=1, order=1)) / 0.25
-    margin = int(4 * sigma)
-    gradient[:, :margin] = 0
-    gradient[:, -margin:] = 0
-    gradient[~inside] = 0
-    positive = gradient[gradient > 0]
+    # Include the surrounding background in the noise estimate; a narrow window
+    # centred on an edge can otherwise mistake the edge itself for the noise floor.
+    positive = gradient[(gradient > 0) & inside]
     noise = 1.4826 * float(np.median(positive)) if positive.size else 0.0
+    gradient = gradient[:, margin:margin + scales.size]
+    inside = inside[:, margin:margin + scales.size]
+    gradient[~inside] = 0
     limit = max(floor, 5 * noise) if robust else floor
     peaks = np.zeros_like(gradient, dtype=bool)
     peaks[:, 1:-1] = (
